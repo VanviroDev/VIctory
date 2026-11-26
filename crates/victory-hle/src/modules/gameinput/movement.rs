@@ -146,10 +146,13 @@ mod tests {
                 until: Instant::now(),
                 read: false.into(),
             };
-            let expected = super::super::fallback(&[super::super::KeyState {
-                virtual_key: key as u8,
-                ..Default::default()
-            }]);
+            let expected = super::super::fallback(
+                &[super::super::KeyState {
+                    virtual_key: key as u8,
+                    ..Default::default()
+                }],
+                super::super::Pointer::default(),
+            );
             assert_eq!(held.apply(PadState::default()), Some(expected));
             assert!(held.apply(expected).is_none());
         }
