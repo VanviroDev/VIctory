@@ -222,9 +222,20 @@ static class GTA6
         start.EnvironmentVariables["VICTORY_AMBIENT_FALLBACK"] = "1";
         start.EnvironmentVariables["VICTORY_FSR_4K"] = "0";
         start.EnvironmentVariables["VICTORY_LOG"] = "warn";
+        // CPU: the fill and memory jobs across every logical processor. The
+        // fill count is capped at 6 in the runtime; the wide jobs go to 12.
         start.EnvironmentVariables["VICTORY_FILL_WORKERS"] = "6";
-        start.EnvironmentVariables["VICTORY_WIDE_WORKERS"] = "6";
+        start.EnvironmentVariables["VICTORY_WIDE_WORKERS"] = "12";
+        start.EnvironmentVariables["VICTORY_PIPELINE_WORKERS"] = "8";
         start.EnvironmentVariables["VICTORY_PARALLEL_PRELUDES"] = "1";
+        start.EnvironmentVariables["VICTORY_WIDE_REFRESH"] = "1";
+        // GPU: the title issues its mesh draws one record per call, and each
+        // clamp was a compute pass of its own between two waits. A window of
+        // records per pass took the card from 0.7% to 19-55% while the world
+        // loaded (run 23, 26 November).
+        start.EnvironmentVariables["VICTORY_INDIRECT_WINDOW"] = "1";
+        // The title caps itself at 30 Hz (33.333 ms); 16667 is 60.
+        start.EnvironmentVariables["VICTORY_FRAME_INTERVAL"] = "16667";
         // 8 GB card: the system gives the process about 7.2 GB of its own
         // memory. Past that Windows moves textures to shared memory and the
         // device is removed (the runtime's own note: runs 20 and 24). Cap
@@ -235,7 +246,7 @@ static class GTA6
         // The title otherwise believes the television is 4K and renders a 4K
         // scene into a 1080p window. Tell it the window's own size.
         start.EnvironmentVariables["VICTORY_DISPLAY_MODE"] = high ? "2560x1440" : "1920x1080";
-        foreach (string name in new[] { "VICTORY_AMBIENT_FALLBACK", "VICTORY_FSR_4K", "VICTORY_LOG", "VICTORY_FILL_WORKERS", "VICTORY_WIDE_WORKERS", "VICTORY_PARALLEL_PRELUDES", "VICTORY_TEXTURE_BUDGET_MB", "VICTORY_TEXTURE_ROOM_PERCENT", "VICTORY_DISPLAY_MODE", "VICTORY_FRAME_INTERVAL" })
+        foreach (string name in new[] { "VICTORY_AMBIENT_FALLBACK", "VICTORY_FSR_4K", "VICTORY_LOG", "VICTORY_FILL_WORKERS", "VICTORY_WIDE_WORKERS", "VICTORY_PIPELINE_WORKERS", "VICTORY_PARALLEL_PRELUDES", "VICTORY_WIDE_REFRESH", "VICTORY_INDIRECT_WINDOW", "VICTORY_TEXTURE_BUDGET_MB", "VICTORY_TEXTURE_ROOM_PERCENT", "VICTORY_GPU_MEMORY_MB", "VICTORY_INPLACE", "VICTORY_INPLACE_MB", "VICTORY_ADAPTER", "VICTORY_DISPLAY_MODE", "VICTORY_FRAME_INTERVAL" })
         {
             string value = Environment.GetEnvironmentVariable(name);
             if (!string.IsNullOrEmpty(value))

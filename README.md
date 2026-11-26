@@ -1,171 +1,299 @@
-# DexNom RayTime — build do VanviroDev (RTX 3060 Ti)
+# DexNom RayTime — fork do VanviroDev
 
-Fork do [DexNom RayTime](https://github.com/DexNom/VIctory) (que por sua vez é fork do VIctory do Marvisak), ajustado para **uma máquina específica**: Ryzen 5 5600G, 16 GB de RAM, RTX 3060 Ti 8 GB e Windows 10 19045. O objetivo desta build é rodar o dump Xbox Series do GTA6 no PC com áudio, imagem, teclado/mouse e o máximo de FPS que o título permitir.
+Runtime de compatibilidade Xbox Series para PC. Fork do [DexNom RayTime](https://github.com/DexNom/VIctory), que por sua vez é fork do [VIctory do Marvisak](https://github.com/Marvisak/VIctory).
 
-**Onde estamos:** o jogo abre, mostra o logo, toca o áudio da intro e chega à tela de carregamento. O carregamento ainda cai (crash em investigação) e o título se limita a 30 fps por conta própria. O detalhe de cada otimização está em [OTIMIZACOES.md](OTIMIZACOES.md); o passo a passo de build está em [BUILD-MAQUINA.md](BUILD-MAQUINA.md).
+**Estado:** o título abre, toca o áudio da intro, mostra o logo e chega ao carregamento do mundo. O primeiro frame do mundo é montado (2.628 draws, 120 mil texturas) e depois o dispositivo D3D12 é removido por falta de RAM. Não é jogável do começo ao fim ainda — é uma build de pesquisa, e é isso que você vai encontrar.
 
-## A configuração desta build
+Se você quer testar e mandar o log, este documento tem o caminho inteiro.
 
-| Peça | Modelo |
-| --- | --- |
-| CPU | AMD Ryzen 5 5600G — Zen 3, 6 núcleos / 12 threads, AVX2, sem AVX-512 |
-| GPU | NVIDIA GeForce RTX 3060 Ti — 8 GB GDDR6, driver atual |
-| RAM | 16 GB DDR4 |
-| Sistema | Windows 10 Pro x64, build 19045 |
-| Direct3D 12 | Agility SDK 1.620.2 (Shader Model 6.6) |
-| Alvo | dump Xbox Series `GTA6.Xbox.v1.0.2.1-CYBERLEEK` |
+---
 
-A build de referência do fork (RX 7900 XTX / Core Ultra 9 / 64 GB) continua descrita mais abaixo, mas **não é o alvo desta fork**. Aqui o perfil é ray tracing desligado, 1080p nativo e orçamento de VRAM de 8 GB.
-
-## Onde fica tudo
-
-Tudo mora em **`C:\GTA6-PC`**. A pasta é portátil: pode mover ou copiar inteira, o `GTA6.exe` reextrai o runtime de dentro dele se faltar arquivo.
-
-| Arquivo | O que é |
-| --- | --- |
-| `GTA6.exe` | launcher único: runtime, Agility SDK, controles e docs embutidos (~19 MB) |
-| `victory.exe` | runtime VIctory compilado para esta máquina |
-| `victory-play.exe` | launcher de linha de comando usado pelo `GTA6.exe` |
-| `victory-warm.exe` | aquece o cache de shaders |
-| `D3D12\D3D12Core.dll` | Agility SDK 1.620.2 |
-| `game-path.txt` | caminho do `game_scarlett_master.exe` (UTF-8 sem BOM) |
-| `cache\` | shaders traduzidos e texturas convertidas |
-| `state\` | saves, telemetria e relatórios de crash |
-| `logs\` | log de cada execução; `latest.txt` aponta para o último |
-| `CONTROLES.md` | mapa de teclas e mouse |
-| `OTIMIZACOES.md` | o que foi otimizado e por quê |
-
-## Como jogar
-
-1. Abra **`C:\GTA6-PC\GTA6.exe`** e clique em **JOGAR 1080p** (perfil recomendado para esta máquina).
-2. Ou dê duplo clique em **`JOGAR-1080P.cmd`**, que usa o mesmo perfil sem a janela do launcher.
-3. Para 1440p, use **JOGAR 1440p** / `JOGAR-1440P.cmd` — o jogo renderiza 1080p e entrega 1440p, com mais uso de VRAM.
-
-O launcher também tem **Aquecer cache** (traduz todos os shaders antes de jogar), **Controles**, **Logs** e **Jogo** (troca a pasta do dump). Depois de iniciar, ele restaura e foca a janela do título, então o jogo sai da tela de configuração sem precisar de controle.
-
-Sem janela: `GTA6.exe --play`, `GTA6.exe --play-1440p` ou `GTA6.exe --install`.
-
-## Perfis
-
-| Perfil | Console | RT | Resolução | Flags |
-| --- | --- | --- | --- | --- |
-| 1080p | Series S | off | nativa do Series S | `--no-rt --console series-s --local-gpu-memory --sparse-textures --no-upload-ahead` |
-| 1440p | Series X | off | cena 1080p → saída 1440p | `--no-rt --console series-x --1080p-to-1440p --local-gpu-memory --sparse-textures --no-upload-ahead` |
-
-Variáveis comuns aos dois perfis:
-
-```
-VICTORY_DISPLAY_MODE=1920x1080   (ou 2560x1440 no perfil 1440p)
-VICTORY_FILL_WORKERS=6
-VICTORY_WIDE_WORKERS=6
-VICTORY_PARALLEL_PRELUDES=1
-VICTORY_TEXTURE_BUDGET_MB=5200
-VICTORY_TEXTURE_ROOM_PERCENT=80
-VICTORY_AMBIENT_FALLBACK=1
-VICTORY_FSR_4K=0
-VICTORY_LOG=warn
-```
-
-## O que esta build muda em relação ao fork
-
-### Compilação
-
-- `-C target-cpu=znver3` — o binário usa Zen 3 (AVX2, FMA) em vez do x86-64 genérico.
-- `lto = "fat"`, `codegen-units = 1`, `opt-level = 3` — código inteiro otimizado junto; menos chamadas e menos cópia no caminho de submissão.
-- `debug = "line-tables-only"` — o crash ainda aponta arquivo e linha sem inflar o binário.
-
-### Runtime
-
-- **`VICTORY_DISPLAY_MODE`** — o título acreditava que a TV era 4K e renderizava uma cena 3840×2160 para uma janela 1920×1080. Agora ele recebe o tamanho da janela e renderiza nela. É a maior economia de GPU/VRAM do conjunto.
-- **`VICTORY_TEXTURE_BUDGET_MB=5200`** — teto para as cópias de textura que o título preenche. Sem ele o processo chegava a 7,2 GB de 7,2 GB de orçamento da placa, o Windows movia texturas para a memória compartilhada e o dispositivo era removido.
-- **`VICTORY_TEXTURE_ROOM_PERCENT=80`** — a folga de VRAM reservada antes de admitir novas cópias.
-- **`VICTORY_FILL_WORKERS=6`** e **`VICTORY_WIDE_WORKERS=6`** — 6 threads preparando cópias de buffer e 6 no destile/hash de texturas (o padrão do código é 3 num 6c/12t).
-- **`VICTORY_PARALLEL_PRELUDES=1`** — grava os prelúdios de submissão em paralelo.
-- **`VICTORY_FRAME_INTERVAL`** — override do intervalo de frame em microssegundos. `16667` = 60 fps; sem ela, o runtime obedece o título (30 fps). Experimental: se a simulação for baseada no intervalo pedido, o jogo acelera.
-- **`VICTORY_PRESENT_LAST_TARGET`** — ligado por padrão. O present percorre as planes do PresentX, escolhe a de maior área e, se ela for menor que o último alvo de desenho do frame, apresenta o último alvo (a cena). Era isso que tirava a tela preta. `0` desliga.
-
-### Present
-
-O título apresenta duas *planes*; cada registro tem `0x48` bytes (token, contagem, lista de recursos, reservados). O runtime percorre todas, escolhe a de maior área e apresenta o alvo certo. O swap chain acompanha o tamanho da textura apresentada — com o `VICTORY_DISPLAY_MODE` no tamanho da janela, ele para de ir para 4K.
-
-### Teclado e mouse
-
-Teclado e mouse somam no pad 0 mesmo com um controle Xbox conectado. WASD no stick esquerdo, mouse no stick direito, LMB = RT, RMB = LT, Espaço/Enter = A, Ctrl/Backspace = B, Esc = Start, Tab = View. A tabela completa está em [CONTROLES.md](CONTROLES.md).
-
-### Launcher
-
-`tools/pack/GTA6.cs` compila com `tools/pack/build.ps1` para um único `GTA6.exe`: runtime, `D3D12Core.dll`, `CONTROLES.md`, `BUILD-MAQUINA.md` e `OTIMIZACOES.md` vão embutidos como recursos. Na primeira execução ele extrai o que falta na própria pasta, lê o `game-path.txt` e chama o `victory-play.exe`.
-
-## Onde estamos agora
-
-O que já funciona:
-
-- Boot completo do runtime, com Agility SDK e Shader Model 6.6.
-- Logo Rockstar e áudio da intro.
-- Imagem na janela em 1920×1080 (present multi-plane).
-- Teclado e mouse no pad virtual.
-- ~30,0 fps estáveis no logo e no menu, com quedas para 19–23 fps quando o streaming de texturas chega a 6–11 ms/frame e 12–15 MB/frame.
-
-O que ainda falta:
-
-- **Crash no carregamento.** O jogo chega à tela de carregamento e cai. O relatório fica em `state\7952987A\temp\*.crash.log` e em `state\7952987A\crashes.log`; o crash mais recente conhecido é `victory.exe+0x6179d0` (leitura de `0x1`), chamado de dentro de `victory-image-*.dll`. A simbolização com o PDB atual ainda não fecha porque o relatório é de um build anterior — reproduzir com o build atual é o próximo passo.
-- **29 pipelines em `E_NOTIMPL`.** Slots `0x1c8`/`0x218`; o layout da struct de args ainda não é conhecido. Alguns efeitos podem faltar.
-- **Cap de 30 fps do título.** O jogo chama `set_interval(33333)` no modo de qualidade, tanto em Series S quanto em Series X. No logo a GPU fica em 0% e a CPU em 5% — não é gargalo. O override é `VICTORY_FRAME_INTERVAL=16667`.
-- **VRAM.** O processo chegava ao teto de 7,2 GB da placa e o dispositivo era removido. O teto de 5,2 GB para texturas do título é a correção em teste.
-
-## Reproduzir o build
+## Comece aqui — três passos
 
 ```powershell
-$env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
-cd C:\Users\Administrator\Downloads\DexNom-RayTime
-cargo build --locked --release -p victory --features diagnostics --bins
+# 1. Ferramentas (uma vez)
+winget install Rustlang.Rustup
+winget install Microsoft.VisualStudio.2022.BuildTools
+
+# 2. Build (na pasta do repo)
+.\Setup.cmd
+
+# 3. Jogar
+& "$env:LOCALAPPDATA\DexNom Runtime\victory-play.exe"
 ```
 
-Binários em `target\release`: `victory.exe`, `victory-play.exe`, `victory-warm.exe`. Copie os três para `C:\GTA6-PC` e rode `tools\pack\build.ps1` para gerar o `GTA6.exe` único.
+Se algo falhar, rode **`.\VERIFICAR.cmd`** antes de abrir issue. Ele confere tudo e diz exatamente o que falta.
 
-## Variáveis de ambiente úteis
+---
 
-| Variável | Efeito |
+## O que você precisa
+
+| item | versão / detalhe |
 | --- | --- |
-| `VICTORY_LOG` | `warn` no uso normal; `info` para FPS; `debug` para diagnóstico (gera ~6 MB em 25 s) |
-| `VICTORY_DISPLAY_MODE` | tamanho que o título recebe (`1920x1080`, `2560x1440`) |
-| `VICTORY_RENDER_1080P` | força a cena em 1080p |
-| `VICTORY_FRAME_INTERVAL` | intervalo de frame em µs (`16667` = 60 fps) |
-| `VICTORY_FILL_WORKERS` / `VICTORY_WIDE_WORKERS` | threads de cópia e de textura |
-| `VICTORY_TEXTURE_BUDGET_MB` / `VICTORY_TEXTURE_ROOM_PERCENT` | teto e folga de VRAM |
-| `VICTORY_PRESENT_LAST_TARGET` | `0` desliga o fallback de present |
+| Windows | 10 build 19045 ou mais novo, **x64** |
+| Rust | 1.85 ou mais novo, toolchain `x86_64-pc-windows-msvc` ([rustup.rs](https://rustup.rs)) |
+| Visual Studio Build Tools | workload **Desktop development with C++** + Windows 10/11 SDK |
+| Placa de vídeo | D3D12 com **Shader Model 6.6** (Agility SDK 1.620+) |
+| RAM | **16 GB é o mínimo**, e é o gargalo desta build. 32 GB é o recomendado |
+| VRAM | 8 GB recomendado |
+| DirectX 12 Agility SDK | já vem no repo via `D3D12Core.dll` — não precisa instalar |
+
+A build do repositório usa `-C target-cpu=znver3`. **Se a sua CPU não for Zen 3 ou mais nova**, troque para `native` em `.cargo/config.toml`, senão o binário dá instrução ilegal:
+
+```toml
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-cpu=native"]
+```
+
+---
+
+## O jogo não vem no repositório
+
+Este projeto **não distribui jogo, dump, chave ou conteúdo de título**. Você precisa da sua própria cópia extraída da instalação Xbox Series, com o `game_scarlett_master.exe` e a pasta de dados ao lado dele.
+
+O setup pede esse arquivo por uma janela de seleção e grava o caminho em `game-path.txt` (UTF-8 sem BOM). Nada do jogo é copiado ou modificado.
+
+---
+
+## Passo 1 — ferramentas
+
+**Rust**
+
+```powershell
+winget install Rustlang.Rustup
+rustup default stable-x86_64-pc-windows-msvc
+```
+
+Feche e reabra o terminal depois. `cargo --version` tem que responder.
+
+**Visual Studio Build Tools**
+
+```powershell
+winget install Microsoft.VisualStudio.2022.BuildTools
+```
+
+No instalador, marque **Desktop development with C++**. É o que traz o `link.exe` e o Windows SDK.
+
+Confira:
+
+```powershell
+where.exe link.exe
+where.exe cargo
+```
+
+**Agility SDK**
+
+O runtime declara `D3D12SDKVersion = 620` e `D3D12SDKPath = ".\D3D12\"`, então o `D3D12Core.dll` precisa ficar em `D3D12\D3D12Core.dll` ao lado do `victory.exe`. O setup baixa a versão 1.620.2 do pacote `Microsoft.Direct3D.D3D12` no nuget.org (35 MB, uma vez) e copia para o lugar certo — você não precisa instalar nada à mão. Sem ele o runtime morre com `0xC0000005` na criação do device.
+
+---
+
+## Passo 2 — build
+
+```powershell
+.\Setup.cmd
+```
+
+O script:
+
+1. confere Windows x64, Rust e cargo (e acha o Visual Studio Build Tools sozinho);
+2. pergunta o `game_scarlett_master.exe` e valida que o runtime consegue lê-lo;
+3. gera as tabelas de formato (`Initialize-FormatTables.ps1`);
+4. baixa o Agility SDK 1.620.2, se ainda não estiver em `D3D12\`;
+5. compila `victory.exe`, `victory-play.exe` e `victory-warm.exe`;
+6. instala tudo em `%LOCALAPPDATA%\DexNom Runtime` — binários, `D3D12\`, `game-path.txt`, os `.cmd` de perfil e a documentação;
+7. cria os atalhos no menu Iniciar.
+
+Primeira build leva de **10 a 20 minutos** (LTO fat, `codegen-units = 1`). As seguintes são rápidas.
+
+Build manual, se preferir:
+
+```powershell
+cargo build --locked --release -p victory --features diagnostics --bins `
+    --target x86_64-pc-windows-msvc --target-dir target
+```
+
+Binários em `target\x86_64-pc-windows-msvc\release\`.
+
+---
+
+## Passo 3 — jogar
+
+**Pela linha de comando**
+
+```powershell
+& "$env:LOCALAPPDATA\DexNom Runtime\victory-play.exe"
+```
+
+**Pelos atalhos**
+
+O setup cria três no menu Iniciar:
+
+| atalho | perfil |
+| --- | --- |
+| DexNom RayTime (1080p) | Series S, sem ray tracing, ajustes de CPU/GPU/RAM |
+| DexNom RayTime (1440p) | Series X, cena em 1080p, saída 1440p |
+| DexNom RayTime (diagnóstico) | 1080p com `VICTORY_LOG=info` e o log copiado para a Área de Trabalho |
+
+**Pelos scripts do repositório**
+
+Os mesmos perfis, em `.cmd`. Eles usam os binários da pasta onde estão ou, se não houver, a cópia instalada em `%LOCALAPPDATA%\DexNom Runtime`:
+
+```powershell
+.\JOGAR-1080P.cmd          # perfil leve, 8 GB de VRAM (recomendado)
+.\JOGAR-1440P.cmd          # Series X, renderiza 1080p e entrega 1440p
+.\JOGAR-DIAGNOSTICO.cmd    # perfil 1080p com log detalhado, copia o log para a Area de Trabalho
+.\AQUECER-CACHE.cmd        # traduz todos os shaders antes (minutos, uma vez)
+.\VERIFICAR.cmd            # confere maquina, ferramentas, jogo e runtime
+```
+
+O primeiro boot é lento: o runtime traduz shaders e converte texturas. O cache fica em `cache\` e as execuções seguintes são bem mais rápidas.
+
+---
+
+## Perfis prontos
+
+| perfil | flags | quando usar |
+| --- | --- | --- |
+| **1080p** (recomendado) | `--no-rt --console series-s --local-gpu-memory --sparse-textures --no-upload-ahead` | 8 GB de VRAM, 16 GB de RAM |
+| **1440p** | `--no-rt --console series-x --1080p-to-1440p --local-gpu-memory --sparse-textures --no-upload-ahead` | 12 GB+ de VRAM, 32 GB de RAM |
+| **RT experimental** | `--rt --console series-x --local-gpu-memory --sparse-textures --no-upload-ahead` | placa com folga; lento |
+
+Ambiente do perfil 1080p (já embutido no `JOGAR-1080P.cmd`):
+
+```bat
+set VICTORY_DISPLAY_MODE=1920x1080
+set VICTORY_FILL_WORKERS=6
+set VICTORY_WIDE_WORKERS=12
+set VICTORY_PIPELINE_WORKERS=8
+set VICTORY_PARALLEL_PRELUDES=1
+set VICTORY_WIDE_REFRESH=1
+set VICTORY_INDIRECT_WINDOW=1
+set VICTORY_FRAME_INTERVAL=16667
+set VICTORY_INPLACE=1
+set VICTORY_INPLACE_MB=2048
+set VICTORY_TEXTURE_BUDGET_MB=2600
+set VICTORY_TEXTURE_ROOM_PERCENT=80
+set VICTORY_AMBIENT_FALLBACK=1
+set VICTORY_FSR_4K=0
+set VICTORY_LOG=warn
+```
+
+Cada uma dessas está explicada em [OTIMIZACOES.md](OTIMIZACOES.md).
+
+---
+
+## Variáveis de ambiente
+
+### Desempenho
+
+| variável | padrão | efeito |
+| --- | --- | --- |
+| `VICTORY_FRAME_INTERVAL` | do título (33333 = 30 fps) | intervalo de frame em µs. `16667` = 60 fps |
+| `VICTORY_INDIRECT_WINDOW` | `0` | `1` = agrupa draws indiretos em janelas. **Maior ganho de GPU** |
+| `VICTORY_WIDE_WORKERS` | metade dos núcleos, 2–6 | threads de destile/hash, até 12 |
+| `VICTORY_FILL_WORKERS` | `1` | threads de cópia de buffer, até 6 |
+| `VICTORY_PIPELINE_WORKERS` | metade dos núcleos, 2–8 | threads de compilação de pipeline, até 12 |
+| `VICTORY_PARALLEL_PRELUDES` | `0` | `1` = prelúdios de submissão em paralelo |
+| `VICTORY_WIDE_REFRESH` | `0` | `1` = refreshes de cópia em paralelo |
+| `VICTORY_WIDE_BACK` | `1` | `0` desliga snapshots paralelos |
+| `VICTORY_INPLACE` | `0` | `1` = usa páginas do título no lugar, sem copiar (economiza GB de RAM) |
+| `VICTORY_INPLACE_MB` | `4096` | teto de memória do título emplaceada de uma vez |
+
+### Memória
+
+| variável | padrão | efeito |
+| --- | --- | --- |
+| `VICTORY_TEXTURE_BUDGET_MB` | sem teto | teto das cópias de textura que o título preenche |
+| `VICTORY_TEXTURE_ROOM_PERCENT` | `90` | folga de VRAM antes de admitir cópias novas |
+| `VICTORY_GPU_MEMORY_MB` | split do console | VRAM dedicada que o adaptador emulado reporta ao título |
+| `VICTORY_CARD_WINDOWS_MB` | `0` | bytes de janelas que vão para a memória da placa |
+
+### Diagnóstico
+
+| variável | efeito |
+| --- | --- |
+| `VICTORY_LOG` | `warn` normal, `info` mostra FPS, `debug` gera ~6 MB em 25 s |
+| `VICTORY_ADAPTER` | força adaptador por índice ou nome (`VICTORY_ADAPTER=NVIDIA`) |
+| `VICTORY_D3D12_DEBUG` | liga a debug layer (só em build `diagnostics`) |
+| `VICTORY_D3D12_DRED` | device-removed data (breadcrumbs, page fault) |
 | `VICTORY_CAPTURE` / `VICTORY_CAPTURE_FRAMES` | captura frames para PNG |
 | `VICTORY_DUMP_TARGETS` | dump dos alvos de draw |
-| `VICTORY_D3D12_DEBUG` / `VICTORY_D3D12_GBV` | debug layer e validação por GPU (build diagnostics) |
 | `VICTORY_TRAIL` | `0` desliga a trilha de comandos do relatório de crash |
 
-## FSR Quality 4K (perfil original do fork)
+A lista completa das ~200 variáveis está no código: procure por `VICTORY_` em `crates/`.
 
-O fork nasceu com um perfil Series X com ray tracing e FSR 4.1.2 Quality em 1440p → 4K, testado numa RX 7900 XTX. Ele continua no repositório para quem tem uma Radeon com folga de VRAM:
+---
 
-```powershell
-& "$env:LOCALAPPDATA\DexNom Runtime\victory-play.exe" --rt --console series-x --local-gpu-memory --fsr-quality --sparse-textures --no-upload-ahead --capture-readbacks --rt-write-stats
+## Problemas comuns
+
+| sintoma | causa | correção |
+| --- | --- | --- |
+| `cargo` não encontrado | Rust não está no PATH | reabra o terminal; `rustup default stable-x86_64-pc-windows-msvc` |
+| `link.exe` não encontrado | Build Tools sem C++ | instale o workload **Desktop development with C++** |
+| `illegal instruction` / crash na largada | binário compilado para znver3 em CPU mais velha | troque para `target-cpu=native` em `.cargo/config.toml` e rebuild |
+| `0x887A0004` na criação do device | sem Shader Model 6.6 | atualize o driver; confira `D3D12\D3D12Core.dll` |
+| `0x887A0005` + `0x887A0001` no carregamento | RAM esgotada | **é o bug conhecido** — veja abaixo |
+| tela preta com áudio | present escolheu a plane errada | `VICTORY_PRESENT_LAST_TARGET=1` (padrão) |
+| travado em 30 fps | é o cap do próprio título | `VICTORY_FRAME_INTERVAL=16667` |
+| GPU em 0% no menu | não há o que desenhar | `VICTORY_INDIRECT_WINDOW=1`; normal no logo |
+| setup recusa a pasta | instalou dentro do checkout | escolha uma pasta fora do repositório |
+| janela nasce fora da tela | posição inicial do título | o launcher restaura e foca sozinho |
+
+### O crash do carregamento
+
+Sai com `0x887A0005` e motivo `0x887A0001`. A causa medida é **RAM física**, não GPU e não shader:
+
+```
+memory: 13376 MB private (7170 MB of it in memory; the PC has 344 MB free ...)
+host copies of title memory: 3805 alive 2326 MB
+host textures: 17879 alive 3503 MB
+shared buffers: 3852 alive 2537 MB
 ```
 
-O provider FidelityFX vai em `fidelityfx\` na pasta do runtime ou em `VICTORY_FIDELITYFX_DIR`. Nesta máquina (RTX 3060 Ti, 8 GB) o perfil usado é `--no-rt --console series-s`, sem FSR.
+O emulador guarda ~9 GB de cópias e o título emulado pede 7,7 GB. Em 16 GB não cabe. Com `VICTORY_INPLACE=1` e `VICTORY_TEXTURE_BUDGET_MB=2600` o tempo até o crash dobrou (110 s → 250 s) e a GPU passou a ser usada de verdade (0,7% → 18–40%).
 
-## Things to Be Done (upstream)
+Se você tem 32 GB, tente `VICTORY_TEXTURE_BUDGET_MB=4500` e `VICTORY_INPLACE_MB=4096` — e conte no issue se chegou mais longe.
 
-- **Reduce buffer copy-back.** Track which pages the GPU actually writes and read back only the ranges CPU consumers need.
-- **Reduce VRAM use and stabilize texture streaming.** Measure local VRAM and GPU-shared system memory separately; look for duplicate resident resources and repeated mip uploads.
-- **Improve frame-time stability.** Measure cold pipeline compilation and warm gameplay separately; compare pipeline counts and the rendered scene.
+---
 
-For a before-and-after test, use the same scene, camera, and driver. Report median and 95th-percentile frame times, dedicated and shared GPU memory, upload and copy-back time and bytes, and dropped draws or pending pipelines. [Benchmark notes](BENCHMARK.md)
+## Controles
 
-## Credits
+Teclado e mouse viram um pad Xbox virtual. WASD no stick esquerdo, mouse no stick direito, LMB = RT, RMB = LT, Espaço/Enter = A, Ctrl/Backspace = B, Esc = Start, Tab = View. Tabela completa em [CONTROLES.md](CONTROLES.md).
 
-- **Marvisak and the VIctory contributors** created the original Windows compatibility runtime. [VIctory](https://github.com/Marvisak/VIctory)
-- **ZSlayerHQ and the victory-world contributors**, including **triippywhale** and **asdaasdsaddf**, supplied the Radeon rendering work used as the basis for this fork. [victory-world-runtime](https://github.com/ZSlayerHQ/victory-world-runtime)
-- **The XCL contributors** published an independent Xbox Series compatibility layer that informed shader translation and CPU/GPU memory synchronization. [XCL](https://github.com/xcl-dev/xcl)
-- **AMD** supplies the FSR 4.1.2 upscaler used by the Quality 4K profile. [AMD FSR SDK](https://gpuopen.com/amd-fsr-sdk/)
+---
 
-The upstream README preserves the original credits and historical test results. [Upstream README](README.upstream.md)
+## Como reportar
 
-## Licensing
+Abra issue com:
 
-VIctory source is licensed under GPL-3.0-or-later. The upstream project identifies the required BCPack format tables as separately supplied data outside that license. This source archive omits that file. The setup script verifies a local or upstream copy before use. [License](LICENSE) · [Upstream asset policy and table notice](docs/asset-policy.md)
+1. saída de `.\VERIFICAR.cmd`;
+2. o log gerado por `.\JOGAR-DIAGNOSTICO.cmd` (ele copia para a Área de Trabalho);
+3. `state\<id>\temp\*.crash.log`;
+4. sua placa, RAM e versão do Windows.
+
+Com `VICTORY_LOG=info` o log já traz FPS, draws, memória e uso de GPU por frame. É o que permite comparar.
+
+---
+
+## Documentos
+
+| arquivo | conteúdo |
+| --- | --- |
+| [BUILD-MAQUINA.md](BUILD-MAQUINA.md) | o build desta máquina, com os ajustes de compilador |
+| [OTIMIZACOES.md](OTIMIZACOES.md) | cada otimização e a medição que a justifica |
+| [CONTROLES.md](CONTROLES.md) | mapa de teclas e mouse |
+| [BENCHMARK.md](BENCHMARK.md) | como medir antes e depois |
+| [README.upstream.md](README.upstream.md) | README original, com os testes históricos |
+
+---
+
+## Créditos
+
+- **Marvisak e os contribuidores do VIctory** — o runtime de compatibilidade original. [VIctory](https://github.com/Marvisak/VIctory)
+- **ZSlayerHQ e os contribuidores do victory-world**, incluindo **triippywhale** e **asdaasdsaddf** — o trabalho de renderização Radeon que serve de base para este fork. [victory-world-runtime](https://github.com/ZSlayerHQ/victory-world-runtime)
+- **Os contribuidores do XCL** — a camada de compatibilidade Xbox Series independente que informou a tradução de shader e a sincronização de memória CPU/GPU. [XCL](https://github.com/xcl-dev/xcl)
+- **AMD** — o upscaler FSR 4.1.2 usado no perfil Quality 4K. [AMD FSR SDK](https://gpuopen.com/amd-fsr-sdk/)
+
+## Licença
+
+Código sob **GPL-3.0-or-later**. As tabelas de formato BCPack são dados fornecidos separadamente, fora dessa licença; o script de setup confere uma cópia local antes de usar. [LICENSE](LICENSE) · [Política de assets](docs/asset-policy.md)
