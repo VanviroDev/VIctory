@@ -530,7 +530,10 @@ fn workers() -> bool {
     static RUNNING: OnceLock<bool> = OnceLock::new();
     *RUNNING.get_or_init(|| {
         let mut running = false;
-        let workers = std::thread::available_parallelism().map_or(2, |n| (n.get() / 2).clamp(2, 8));
+        let workers = std::env::var_os("VICTORY_PIPELINE_WORKERS")
+            .and_then(|v| v.to_str()?.parse::<usize>().ok())
+            .unwrap_or_else(|| std::thread::available_parallelism().map_or(2, |n| (n.get() / 2).clamp(2, 8)))
+            .clamp(1, 12);
         for i in 0..workers {
             let spawned = std::thread::Builder::new()
                 .name(format!("victory-pipelines-{i}"))
@@ -545,8 +548,6 @@ fn workers() -> bool {
                         next().make();
                         if WAITING.fetch_sub(1, Ordering::Relaxed) == 1 {
                             drained();
-                        } else {
-                            super::library::save(false);
                         }
                     }
                 });
