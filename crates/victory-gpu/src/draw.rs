@@ -3168,6 +3168,10 @@ impl State {
         let rects = self.topology == RECTANGLES && !self.completes_rects();
         let ran = ready && (!rects || self.rectangles(list, vertices, first));
         if ran {
+            #[cfg(feature = "diagnostics")]
+            if let Some(&target) = self.targets.first() {
+                crate::queue::note_last_target(target as This);
+            }
             // Rectangles were expanded into their own vertex buffers.
             let (count, from) = if rects {
                 (vertices / 3 * 6, 0)
@@ -3339,6 +3343,10 @@ impl State {
         }
         let ran = !lost && self.prepare(list, true);
         if ran {
+            #[cfg(feature = "diagnostics")]
+            if let Some(&target) = self.targets.first() {
+                crate::queue::note_last_target(target as This);
+            }
             #[cfg(feature = "diagnostics")]
             list.note_op(|| self.op_text(format!("indexed {indices}x{instances}"), false));
             // SAFETY: an open list with everything set.

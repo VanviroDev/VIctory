@@ -71,6 +71,12 @@ opt-level = 2
 
 [profile.release]
 debug = "line-tables-only"
+# Machine profile (Ryzen 5 5600G / 16 GB): one codegen unit and whole-program
+# LTO buy frame-time on the CPU-side submission and shader paths. The line
+# tables stay so a crash still names a file and a line.
+lto = "fat"
+codegen-units = 1
+opt-level = 3
 
 # The development build: release code generation plus the `diagnostics`
 # feature (`cargo build --profile diag -p victory --features diagnostics`),

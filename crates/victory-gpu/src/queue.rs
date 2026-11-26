@@ -745,6 +745,23 @@ fn system_timestamp() -> u64 {
 /// Frames presented so far.
 static FRAMES: AtomicU64 = AtomicU64::new(0);
 
+/// The texture the frame's last draw rendered to (diagnostics): titles that
+/// hand their picture over in a plane we cannot read still show it.
+#[cfg(feature = "diagnostics")]
+static LAST_TARGET: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Notes the target of a draw that ran, for [`present`] (diagnostics).
+#[cfg(feature = "diagnostics")]
+pub(crate) fn note_last_target(resource: This) {
+    LAST_TARGET.store(resource as usize, Ordering::Relaxed);
+}
+
+/// Takes the last draw target noted since the previous call (diagnostics).
+#[cfg(feature = "diagnostics")]
+fn take_last_target() -> This {
+    LAST_TARGET.swap(0, Ordering::Relaxed) as This
+}
+
 #[cfg(feature = "diagnostics")]
 pub(crate) fn presented() -> u64 {
     FRAMES.load(Ordering::Relaxed)
@@ -832,24 +849,94 @@ extern "system" fn present(
     }
     #[cfg(windows)]
     if planes > 0
-        // SAFETY: the title passes `planes` plane descriptions.
-        && let Some(plane) = unsafe { plane_parameters.as_ref() }
-        && plane.count > 0
-        && !plane.resources.is_null()
-        // SAFETY: the plane lists `count` resources.
-        && let resource = unsafe { *plane.resources }
-        && let Some(texture) = crate::resource::host_resource(resource)
         && let Some(host) = crate::host::host()
     {
-        const COPY_SOURCE: u32 = 0x800;
-        let state = crate::resource::host_transition(resource, COPY_SOURCE)
-            .map_or(COPY_SOURCE, |(_, before)| before);
-        let shown = host.present(texture, state, frame);
-        crate::resource::host_transition(resource, state);
+        // A presentation may stack more than one plane (the title's picture
+        // beside a video or system one). The plane with the most pixels is
+        // the picture: the others have been empty on every title seen so
+        // far, and showing the first one showed a black screen over a scene
+        // the card had drawn.
+        const PLANE_SIZE: usize = 64;
+        let mut chosen: Option<(This, u64)> = None;
+        for i in 0..(planes as usize).min(4) {
+            // SAFETY: the title passes `planes` plane descriptions, each a
+            // console `D3D12XBOX_PRESENT_PLANE_PARAMETERS`: the token, then
+            // the resource count and the list of resources.
+            let base = unsafe { (plane_parameters as *const u8).add(i * PLANE_SIZE) };
+            let count = unsafe { (base.add(8) as *const u32).read_unaligned() };
+            let list = unsafe { (base.add(16) as *const *const This).read_unaligned() };
+            let address = list as usize;
+            if count == 0 || count > 8 || address < 0x10000 || address % 8 != 0 {
+                #[cfg(feature = "diagnostics")]
+                tracing::info!(frame, plane = i, count, list = address, "present plane skipped");
+                continue;
+            }
+            // SAFETY: the plane lists `count` resources.
+            let resource = unsafe { *list };
+            let handle = resource as usize;
+            if handle < 0x10000 || handle % 8 != 0 {
+                #[cfg(feature = "diagnostics")]
+                tracing::info!(frame, plane = i, count, resource = handle, "present plane without a resource");
+                continue;
+            }
+            let Some(texture) = crate::resource::host_resource(resource) else {
+                continue;
+            };
+            // SAFETY: a live resource.
+            let desc = unsafe { texture.GetDesc() };
+            let area = desc.Width * u64::from(desc.Height);
+            #[cfg(feature = "diagnostics")]
+            tracing::info!(
+                frame,
+                plane = i,
+                count,
+                width = desc.Width,
+                height = desc.Height,
+                format = desc.Format.0,
+                "present plane"
+            );
+            if chosen.is_none_or(|(_, best)| area > best) {
+                chosen = Some((resource, area));
+            }
+        }
+        // A title whose picture reaches the card through a pass we do not run
+        // leaves its present plane empty; the frame's last draw target is
+        // that picture, and showing it is better than a black screen.
         #[cfg(feature = "diagnostics")]
-        blinks(frame, resource, state, shown);
-        #[cfg(not(feature = "diagnostics"))]
-        let _ = shown;
+        {
+            let last = take_last_target();
+            if std::env::var_os("VICTORY_PRESENT_LAST_TARGET").is_some()
+                && !last.is_null()
+                && let Some(texture) = crate::resource::host_resource(last)
+            {
+                // SAFETY: a live resource.
+                let desc = unsafe { texture.GetDesc() };
+                let area = desc.Width * u64::from(desc.Height);
+                if chosen.is_none_or(|(_, best)| area > best) {
+                    tracing::info!(
+                        frame,
+                        width = desc.Width,
+                        height = desc.Height,
+                        format = desc.Format.0,
+                        "presenting the frame's last draw target"
+                    );
+                    chosen = Some((last, area));
+                }
+            }
+        }
+        if let Some((resource, _)) = chosen
+            && let Some(texture) = crate::resource::host_resource(resource)
+        {
+            const COPY_SOURCE: u32 = 0x800;
+            let state = crate::resource::host_transition(resource, COPY_SOURCE)
+                .map_or(COPY_SOURCE, |(_, before)| before);
+            let shown = host.present(texture, state, frame);
+            crate::resource::host_transition(resource, state);
+            #[cfg(feature = "diagnostics")]
+            blinks(frame, resource, state, shown);
+            #[cfg(not(feature = "diagnostics"))]
+            let _ = shown;
+        }
     }
     #[cfg(not(windows))]
     let _ = (planes, plane_parameters);

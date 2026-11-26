@@ -1,2 +1,7 @@
 [alias]
 xtask = "run --quiet --package xtask --"
+
+# Machine profile: Ryzen 5 5600G (Zen 3, AVX2, no AVX-512), Windows 10 x64.
+# Codegen targets znver3 directly; this binary is for this box only.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-cpu=znver3"]

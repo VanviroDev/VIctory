@@ -14,6 +14,24 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 
+/// Which D3D12 Agility SDK this executable asks the system `d3d12.dll`
+/// for. The translated shaders are shader model 6.6 and index the view and
+/// sampler heaps directly, and neither exists in the D3D12 that ships with
+/// Windows 10 (10.0.19041 tops out at 6.5 and refuses the
+/// `*_HEAP_DIRECTLY_INDEXED` root signature flags outright). With these
+/// two exports present, `d3d12.dll` loads `D3D12Core.dll` from
+/// `D3D12SDKPath` beside the executable instead, and the whole feature set
+/// is there on Windows 10 as well as 11.
+///
+/// The version must match the shipped core exactly: 620 for 1.620.x.
+#[unsafe(no_mangle)]
+pub static D3D12SDKVersion: u32 = 620;
+
+/// Relative to the executable, and it must end with a separator. A pointer
+/// (not an array): `d3d12.dll` reads the value at this symbol.
+#[unsafe(no_mangle)]
+pub static D3D12SDKPath: &[u8; 9] = b".\\D3D12\\\0";
+
 #[derive(Parser)]
 #[command(
     name = "victory",
