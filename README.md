@@ -1,114 +1,167 @@
-# DexNom RayTime (AMD)
+# DexNom RayTime — build do VanviroDev (RTX 3060 Ti)
 
-DexNom RayTime is a community fork of Marvisak's VIctory for Windows x64. It runs an Xbox Series executable from your own game installation and translates its GPU work for Direct3D 12. This is our most complete tested build so far and the source for the FSR Quality 4K baseline. Game files, executables, saves and generated shader caches stay on your own computer.
+Fork do [DexNom RayTime](https://github.com/DexNom/VIctory) (que por sua vez é fork do VIctory do Marvisak), ajustado para **uma máquina específica**: Ryzen 5 5600G, 16 GB de RAM, RTX 3060 Ti 8 GB e Windows 10 19045. O objetivo desta build é rodar o dump Xbox Series do GTA6 no PC com áudio, imagem, teclado/mouse e o máximo de FPS que o título permitir.
 
-AMD Radeon is the primary target and the best-tested GPU path for this build. See [Experimental NVIDIA](#experimental-nvidia) for the untested NVIDIA launch options. The current performance priorities are reducing VRAM use and improving FPS and frame-time stability.
+**Onde estamos:** o jogo abre, mostra o logo, toca o áudio da intro e chega à tela de carregamento. O carregamento ainda cai (crash em investigação) e o título se limita a 30 fps por conta própria. O detalhe de cada otimização está em [OTIMIZACOES.md](OTIMIZACOES.md); o passo a passo de build está em [BUILD-MAQUINA.md](BUILD-MAQUINA.md).
 
-The Radeon FSR Quality 4K build is our most stable tested baseline for shaders and texture streaming. See [Things to Be Done](#things-to-be-done) for open work and how to measure a contribution.
+## A configuração desta build
 
-## Tested PC
-
-| Component | Test system |
+| Peça | Modelo |
 | --- | --- |
-| GPU | AMD Radeon RX 7900 XTX, 24 GB GDDR6 |
-| CPU | Intel Core Ultra 9 285K, 24 cores |
-| System memory | 64 GB DDR5 |
-| OS | Windows 11 Pro x64, build 26200 |
-| Render profile | Series X, ray tracing on, 2560×1440 render, FSR 4.1.2 Quality, 3840×2160 output |
+| CPU | AMD Ryzen 5 5600G — Zen 3, 6 núcleos / 12 threads, AVX2, sem AVX-512 |
+| GPU | NVIDIA GeForce RTX 3060 Ti — 8 GB GDDR6, driver atual |
+| RAM | 16 GB DDR4 |
+| Sistema | Windows 10 Pro x64, build 19045 |
+| Direct3D 12 | Agility SDK 1.620.2 (Shader Model 6.6) |
+| Alvo | dump Xbox Series `GTA6.Xbox.v1.0.2.1-CYBERLEEK` |
 
-[AMD Radeon RX 7900 XTX specifications](https://www.amd.com/en/products/graphics/desktops/radeon/7000-series/amd-radeon-rx-7900xtx.html)
+A build de referência do fork (RX 7900 XTX / Core Ultra 9 / 64 GB) continua descrita mais abaixo, mas **não é o alvo desta fork**. Aqui o perfil é ray tracing desligado, 1080p nativo e orçamento de VRAM de 8 GB.
 
-## Run it on your PC
+## Onde fica tudo
 
-1. Use 64-bit Windows and a current Direct3D 12 driver. The game uses mesh shaders and Shader Model 6.6. The Radeon gameplay results and known issues are listed below.
-2. Install Rust for Windows and Visual Studio Build Tools. In the Visual Studio installer, select **Desktop development with C++**, including the x64 MSVC toolset and a Windows 10 or 11 SDK. [Rust installer](https://rustup.rs/) · [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
-3. Download this repository using **Code → Download ZIP**, extract the ZIP to a writable folder, and double-click **Setup.cmd**. Select the Series X game executable inside your own extracted game installation. Keep its accompanying files together. Setup downloads the pinned build dependencies, verifies the BCPack format tables, and compiles the three Windows programs locally. [Download source ZIP](https://github.com/DexNom/VIctory/archive/refs/heads/main.zip)
-4. Open **DexNom RayTime** from the Windows Start menu. Use a controller for the game's first-time setup. The launcher and your local data are in `%LOCALAPPDATA%\DexNom Runtime`. Saves are in `state`, shader caches in `cache`, and per-run diagnostics in `logs`. The file `logs\latest.txt` points to the latest game log.
+Tudo mora em **`C:\GTA6-PC`**. A pasta é portátil: pode mover ou copiar inteira, o `GTA6.exe` reextrai o runtime de dentro dele se faltar arquivo.
 
-To update, close the runtime, extract the new source ZIP, and run **Setup.cmd** again. It reuses the saved game path and the same save directory. To select a different installation, pass its executable path to Setup from PowerShell:
+| Arquivo | O que é |
+| --- | --- |
+| `GTA6.exe` | launcher único: runtime, Agility SDK, controles e docs embutidos (~19 MB) |
+| `victory.exe` | runtime VIctory compilado para esta máquina |
+| `victory-play.exe` | launcher de linha de comando usado pelo `GTA6.exe` |
+| `victory-warm.exe` | aquece o cache de shaders |
+| `D3D12\D3D12Core.dll` | Agility SDK 1.620.2 |
+| `game-path.txt` | caminho do `game_scarlett_master.exe` (UTF-8 sem BOM) |
+| `cache\` | shaders traduzidos e texturas convertidas |
+| `state\` | saves, telemetria e relatórios de crash |
+| `logs\` | log de cada execução; `latest.txt` aponta para o último |
+| `CONTROLES.md` | mapa de teclas e mouse |
+| `OTIMIZACOES.md` | o que foi otimizado e por quê |
 
-```powershell
-.\Setup.cmd -GamePath "D:\My Games\Series X\game.exe"
+## Como jogar
+
+1. Abra **`C:\GTA6-PC\GTA6.exe`** e clique em **JOGAR 1080p** (perfil recomendado para esta máquina).
+2. Ou dê duplo clique em **`JOGAR-1080P.cmd`**, que usa o mesmo perfil sem a janela do launcher.
+3. Para 1440p, use **JOGAR 1440p** / `JOGAR-1440P.cmd` — o jogo renderiza 1080p e entrega 1440p, com mais uso de VRAM.
+
+O launcher também tem **Aquecer cache** (traduz todos os shaders antes de jogar), **Controles**, **Logs** e **Jogo** (troca a pasta do dump). Depois de iniciar, ele restaura e foca a janela do título, então o jogo sai da tela de configuração sem precisar de controle.
+
+Sem janela: `GTA6.exe --play`, `GTA6.exe --play-1440p` ou `GTA6.exe --install`.
+
+## Perfis
+
+| Perfil | Console | RT | Resolução | Flags |
+| --- | --- | --- | --- | --- |
+| 1080p | Series S | off | nativa do Series S | `--no-rt --console series-s --local-gpu-memory --sparse-textures --no-upload-ahead` |
+| 1440p | Series X | off | cena 1080p → saída 1440p | `--no-rt --console series-x --1080p-to-1440p --local-gpu-memory --sparse-textures --no-upload-ahead` |
+
+Variáveis comuns aos dois perfis:
+
+```
+VICTORY_DISPLAY_MODE=1920x1080   (ou 2560x1440 no perfil 1440p)
+VICTORY_FILL_WORKERS=6
+VICTORY_WIDE_WORKERS=6
+VICTORY_PARALLEL_PRELUDES=1
+VICTORY_TEXTURE_BUDGET_MB=5200
+VICTORY_TEXTURE_ROOM_PERCENT=80
+VICTORY_AMBIENT_FALLBACK=1
+VICTORY_FSR_4K=0
+VICTORY_LOG=warn
 ```
 
-To warm the shader cache, open `victory-warm.exe` in the installed runtime directory. The log lists translated and refused shaders. Graphics pipelines also depend on draw state encountered during play. If you see a missing `VCRUNTIME140.dll` error, install Microsoft's x64 redistributable. [Microsoft Visual C++ Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)
+## O que esta build muda em relação ao fork
 
-For a manual build, run `.\Initialize-FormatTables.ps1`, then `cargo build --locked --release -p victory --features diagnostics --bins`. The release binaries are in `target\release`. Place all three together outside the checkout and pass the game executable path to `victory-play.exe`. Custom data and cache directories are documented in the configuration example. [Configuration example](victory.example.toml)
+### Compilação
 
-## FSR Quality 4K baseline
+- `-C target-cpu=znver3` — o binário usa Zen 3 (AVX2, FMA) em vez do x86-64 genérico.
+- `lto = "fat"`, `codegen-units = 1`, `opt-level = 3` — código inteiro otimizado junto; menos chamadas e menos cópia no caminho de submissão.
+- `debug = "line-tables-only"` — o crash ainda aponta arquivo e linha sem inflar o binário.
 
-Open **DexNom RayTime (FSR Quality 4K)** to use the tested Series X profile. It renders at 2560×1440 and presents at 3840×2160 with ray tracing enabled. FSR 4.1.2 takes the place of the game's TAA upscaler in this profile.
+### Runtime
 
-The baseline was tested with a PC FidelityFX 4.1.2 provider. Put the provider and its dependencies in the installed runtime's `fidelityfx` subfolder or set `VICTORY_FIDELITYFX_DIR` to the folder containing `amd_fidelityfx_upscaler_dx12.dll`. The provider is supplied separately.
+- **`VICTORY_DISPLAY_MODE`** — o título acreditava que a TV era 4K e renderizava uma cena 3840×2160 para uma janela 1920×1080. Agora ele recebe o tamanho da janela e renderiza nela. É a maior economia de GPU/VRAM do conjunto.
+- **`VICTORY_TEXTURE_BUDGET_MB=5200`** — teto para as cópias de textura que o título preenche. Sem ele o processo chegava a 7,2 GB de 7,2 GB de orçamento da placa, o Windows movia texturas para a memória compartilhada e o dispositivo era removido.
+- **`VICTORY_TEXTURE_ROOM_PERCENT=80`** — a folga de VRAM reservada antes de admitir novas cópias.
+- **`VICTORY_FILL_WORKERS=6`** e **`VICTORY_WIDE_WORKERS=6`** — 6 threads preparando cópias de buffer e 6 no destile/hash de texturas (o padrão do código é 3 num 6c/12t).
+- **`VICTORY_PARALLEL_PRELUDES=1`** — grava os prelúdios de submissão em paralelo.
+- **`VICTORY_FRAME_INTERVAL`** — override do intervalo de frame em microssegundos. `16667` = 60 fps; sem ela, o runtime obedece o título (30 fps). Experimental: se a simulação for baseada no intervalo pedido, o jogo acelera.
+- **`VICTORY_PRESENT_LAST_TARGET`** — ligado por padrão. O present percorre as planes do PresentX, escolhe a de maior área e, se ela for menor que o último alvo de desenho do frame, apresenta o último alvo (a cena). Era isso que tirava a tela preta. `0` desliga.
 
-For a manual launch, use the same flags as the Quality shortcut.
+### Present
+
+O título apresenta duas *planes*; cada registro tem `0x48` bytes (token, contagem, lista de recursos, reservados). O runtime percorre todas, escolhe a de maior área e apresenta o alvo certo. O swap chain acompanha o tamanho da textura apresentada — com o `VICTORY_DISPLAY_MODE` no tamanho da janela, ele para de ir para 4K.
+
+### Teclado e mouse
+
+Teclado e mouse somam no pad 0 mesmo com um controle Xbox conectado. WASD no stick esquerdo, mouse no stick direito, LMB = RT, RMB = LT, Espaço/Enter = A, Ctrl/Backspace = B, Esc = Start, Tab = View. A tabela completa está em [CONTROLES.md](CONTROLES.md).
+
+### Launcher
+
+`tools/pack/GTA6.cs` compila com `tools/pack/build.ps1` para um único `GTA6.exe`: runtime, `D3D12Core.dll`, `CONTROLES.md`, `BUILD-MAQUINA.md` e `OTIMIZACOES.md` vão embutidos como recursos. Na primeira execução ele extrai o que falta na própria pasta, lê o `game-path.txt` e chama o `victory-play.exe`.
+
+## Onde estamos agora
+
+O que já funciona:
+
+- Boot completo do runtime, com Agility SDK e Shader Model 6.6.
+- Logo Rockstar e áudio da intro.
+- Imagem na janela em 1920×1080 (present multi-plane).
+- Teclado e mouse no pad virtual.
+- ~30,0 fps estáveis no logo e no menu, com quedas para 19–23 fps quando o streaming de texturas chega a 6–11 ms/frame e 12–15 MB/frame.
+
+O que ainda falta:
+
+- **Crash no carregamento.** O jogo chega à tela de carregamento e cai. O relatório fica em `state\7952987A\temp\*.crash.log` e em `state\7952987A\crashes.log`; o crash mais recente conhecido é `victory.exe+0x6179d0` (leitura de `0x1`), chamado de dentro de `victory-image-*.dll`. A simbolização com o PDB atual ainda não fecha porque o relatório é de um build anterior — reproduzir com o build atual é o próximo passo.
+- **29 pipelines em `E_NOTIMPL`.** Slots `0x1c8`/`0x218`; o layout da struct de args ainda não é conhecido. Alguns efeitos podem faltar.
+- **Cap de 30 fps do título.** O jogo chama `set_interval(33333)` no modo de qualidade, tanto em Series S quanto em Series X. No logo a GPU fica em 0% e a CPU em 5% — não é gargalo. O override é `VICTORY_FRAME_INTERVAL=16667`.
+- **VRAM.** O processo chegava ao teto de 7,2 GB da placa e o dispositivo era removido. O teto de 5,2 GB para texturas do título é a correção em teste.
+
+## Reproduzir o build
+
+```powershell
+$env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
+cd C:\Users\Administrator\Downloads\DexNom-RayTime
+cargo build --locked --release -p victory --features diagnostics --bins
+```
+
+Binários em `target\release`: `victory.exe`, `victory-play.exe`, `victory-warm.exe`. Copie os três para `C:\GTA6-PC` e rode `tools\pack\build.ps1` para gerar o `GTA6.exe` único.
+
+## Variáveis de ambiente úteis
+
+| Variável | Efeito |
+| --- | --- |
+| `VICTORY_LOG` | `warn` no uso normal; `info` para FPS; `debug` para diagnóstico (gera ~6 MB em 25 s) |
+| `VICTORY_DISPLAY_MODE` | tamanho que o título recebe (`1920x1080`, `2560x1440`) |
+| `VICTORY_RENDER_1080P` | força a cena em 1080p |
+| `VICTORY_FRAME_INTERVAL` | intervalo de frame em µs (`16667` = 60 fps) |
+| `VICTORY_FILL_WORKERS` / `VICTORY_WIDE_WORKERS` | threads de cópia e de textura |
+| `VICTORY_TEXTURE_BUDGET_MB` / `VICTORY_TEXTURE_ROOM_PERCENT` | teto e folga de VRAM |
+| `VICTORY_PRESENT_LAST_TARGET` | `0` desliga o fallback de present |
+| `VICTORY_CAPTURE` / `VICTORY_CAPTURE_FRAMES` | captura frames para PNG |
+| `VICTORY_DUMP_TARGETS` | dump dos alvos de draw |
+| `VICTORY_D3D12_DEBUG` / `VICTORY_D3D12_GBV` | debug layer e validação por GPU (build diagnostics) |
+| `VICTORY_TRAIL` | `0` desliga a trilha de comandos do relatório de crash |
+
+## FSR Quality 4K (perfil original do fork)
+
+O fork nasceu com um perfil Series X com ray tracing e FSR 4.1.2 Quality em 1440p → 4K, testado numa RX 7900 XTX. Ele continua no repositório para quem tem uma Radeon com folga de VRAM:
 
 ```powershell
 & "$env:LOCALAPPDATA\DexNom Runtime\victory-play.exe" --rt --console series-x --local-gpu-memory --fsr-quality --sparse-textures --no-upload-ahead --capture-readbacks --rt-write-stats
 ```
 
-The **DexNom RayTime (Experimental RT)** shortcut enables ray tracing with the game's display path. The shortcuts share your local saves.
+O provider FidelityFX vai em `fidelityfx\` na pasta do runtime ou em `VICTORY_FIDELITYFX_DIR`. Nesta máquina (RTX 3060 Ti, 8 GB) o perfil usado é `--no-rt --console series-s`, sem FSR.
 
-Chapter 1 City produced in-range ray and triangle intersections on an RX 7900 XTX. The game builds and traverses its acceleration structures through translated Direct3D 12 compute shaders. Frame times can still reach several seconds. Interior lighting, shadows and performance vary by scene. [Ray-tracing implementation](docs/fork-ray-tracing.md) · [City testing](BENCHMARK.md)
+## Things to Be Done (upstream)
 
-## Experimental NVIDIA
+- **Reduce buffer copy-back.** Track which pages the GPU actually writes and read back only the ranges CPU consumers need.
+- **Reduce VRAM use and stabilize texture streaming.** Measure local VRAM and GPU-shared system memory separately; look for duplicate resident resources and repeated mip uploads.
+- **Improve frame-time stability.** Measure cold pipeline compilation and warm gameplay separately; compare pipeline counts and the rendered scene.
 
-NVIDIA gameplay is untested. Start with ray tracing off and the game's display path. Replace `--rt` with `--no-rt` and leave out `--fsr-quality`, `--fsr-balanced`, and `--fsr-performance`. After setup, run the following in PowerShell.
-
-```powershell
-$env:VICTORY_FSR_4K = '0'
-$env:VICTORY_AMBIENT_FALLBACK = '1'
-& "$env:LOCALAPPDATA\DexNom Runtime\victory-play.exe" --no-rt --console series-x
-```
-
-`--no-rt` skips the ray-tracing builder, traversal, and lighting resolve. Supported material shaders use a lightweight diffuse ambient fill based on their base color. Some interiors can still look darker. [RT pass selection](crates/victory-gpu/src/pipeline/ray_tracing.rs) · [Ambient fill](crates/victory-shader/src/emit/mod.rs)
-
-For a separate partial RT experiment, replace `--no-rt` with `--rt-static-bvh` and keep the FSR preset off. This skips rebuilding the acceleration structure for dynamic geometry and still traces rays through the prebuilt world structure. Ray traversal and lighting resolve can still be expensive, and moving objects may have incomplete shadows or reflections. Baked lighting or a probe-based indirect-light fallback is future work. [Static BVH mode](crates/victory-gpu/src/pipeline/ray_tracing.rs)
-
-Keep the scene and resolution the same when comparing the two modes. Include the GPU actually used, its driver, frame times, and any lighting issues. The file `logs\latest.txt` points to the run log, which records the requested ray-tracing mode.
-
-## Things to Be Done
-
-A fresh public download reached the City waterfront on an RX 7900 XTX with FSR 4.1.2 and ray tracing enabled. The first in-game frames took longer while pipelines compiled. Warm samples reached about 1.1–1.3 FPS with zero dropped draws. Some materials still rendered black.
-
-- **Reduce buffer copy-back.** Track which pages the GPU actually writes and read back the ranges needed by CPU consumers. Start with the ray-tracing header builder, which declares much broader write ranges than it uses. Check fence ordering, CPU writes, aliases, and remaps when narrowing synchronization. [Submission and readback](crates/victory-gpu/src/host.rs) · [Buffer snapshots](crates/victory-gpu/src/shadow.rs) · [Guest memory directory](crates/victory-gpu/src/memory.rs)
-- **Reduce VRAM use and stabilize texture streaming.** Measure local VRAM and GPU-shared system memory separately. Look for duplicate resident resources, oversized staging allocations, and repeated mip uploads. Keep a valid resident mip available until its replacement has finished uploading. For black materials, trace the draw's base color back to the bound texture and mip. [Texture residency](crates/victory-gpu/src/texture.rs) · [Texture descriptors](crates/victory-gpu/src/descriptor/host.rs)
-- **Improve frame-time stability.** Measure cold pipeline compilation and warm gameplay separately. Look for CPU waits on buffer publication, repeated uploads, and pipeline work that can be prepared before the first draw. Compare pipeline counts and the rendered scene to check for regressions. [Shader translation](crates/victory-shader/src/emit) · [Pipeline creation](crates/victory-gpu/src/pipeline.rs)
-
-For a before-and-after test, use the same scene, camera, and driver with ray tracing on and FSR Quality at 1440p → 4K. Report median and 95th-percentile frame times, dedicated and shared GPU memory, upload and copy-back time and bytes, and dropped draws or pending pipelines. Include the commit, hardware, and relevant log lines. [Benchmark notes](BENCHMARK.md)
-
-## Changes in this snapshot
-
-- Pixel shaders that read neighboring pixels in a 2×2 group now preserve the values at triangle edges. On an RX 7900 XTX, this reduced incorrect edge pixels from 32 to zero in each of two adjoining-triangle tests. Cube-map sampling also selects the correct mip level for explicit gradients and honors the shader's minimum mip level.
-- The ray-tracing memory directory can grow beyond 1,023 backing buffers. Each recorded draw or dispatch uses only the views available when it was recorded. Older command lists keep their original views.
-- Streamed textures can upload when only their middle pages are resident. The runtime merges overlapping memory notifications and rescans tracked textures if the notification queue fills. Previously used depth-only pipelines now warm ahead of speculative material pipelines to reduce missing shadows during loading.
-- Some dock objects still appear black in the City save. The same distant dock fixtures appeared dark with the ray-structure builder disabled. The effect of these changes on those objects and on gameplay FPS is still being tested.
-- GPU readback identifies changed pages and combines adjacent copy ranges. This targets CPU/GPU synchronization and transfer overhead.
-- Ray-structure builder dispatches now honor the game's thread counts and mask excess lanes in the final group. Read-only traversal no longer declares the entire guest memory directory writable when the shader sends its output to another buffer or texture.
-- Texture handling searches for contiguous descriptor slots and admits already-resident textures under memory pressure. Earlier changes address publication order, placed-texture ownership and supported render-XOR layouts.
-- Shaders can choose between two static samplers across a uniform branch. This recovered 40 shader variants from the tested archive. Another fix recovered one voxel visibility shader by recognizing a saved and restored wave64 lane mask. Mixed render targets retain their individual write masks when an integer target bypasses blending.
-- The runtime preserves the game's vertex output interpolation and fixes output signature ordering. All 2,191 archive vertex shaders passed the Microsoft DXIL validator, including 18 water shaders. New textures and retries share the upload budget, and a previously refused buffer view is checked again when its backing allocation changes.
-- The runtime resolves guest addresses from ray-tracing descriptors, preserves raw buffer offsets and prepares the memory each command list reads. Texture uploads can proceed while Windows remaps unrelated memory. In-game ray-traced lighting is still experimental.
-- Five additional shadow compute shaders compile and create pipelines on the RX 7900 XTX. The translated ray-node regression also exercises three reflections through the guest-page directory. Changes confined to the standalone execution tests now preserve cached shader translations.
-- Shader translation preserves the guest wave width for lane permutations and handles heap-indexed texture-size queries. Save handling flushes copied blobs before publication and can recover a complete checkpoint.
-
-The source ZIP builds with the Windows setup script. The test report covers shader validation, a Radeon pipeline check, gameplay frame times and the remaining interior lighting issue. [Test and benchmark report](BENCHMARK.md)
-
-### Testing CPU submission workers
-
-For a local experiment, open PowerShell and run the following after setup. The process uses four CPU workers for eligible upload batches and can record independent transition command lists on the shared worker pool. The final GPU queue, fence signals and resource transitions retain the game's submission order. Compare the same save and camera after the initial streaming period. The default launcher uses the baseline settings.
-
-```powershell
-$env:VICTORY_FILL_WORKERS = '4'
-$env:VICTORY_PARALLEL_PRELUDES = '1'
-& "$env:LOCALAPPDATA\DexNom Runtime\victory-play.exe"
-```
+For a before-and-after test, use the same scene, camera, and driver. Report median and 95th-percentile frame times, dedicated and shared GPU memory, upload and copy-back time and bytes, and dropped draws or pending pipelines. [Benchmark notes](BENCHMARK.md)
 
 ## Credits
 
-- **Marvisak and the VIctory contributors** created the original Windows compatibility runtime that this fork builds on. [VIctory](https://github.com/Marvisak/VIctory)
-- **ZSlayerHQ and the victory-world contributors**, including **triippywhale** and **asdaasdsaddf**, supplied the Radeon rendering work used as the basis for this fork. [victory-world-runtime](https://github.com/ZSlayerHQ/victory-world-runtime) · [Integrated revision](https://github.com/ZSlayerHQ/victory-world-runtime/commit/99f8834aa16b98d7f3943b8de262a8d4857bda7b)
-- **The XCL contributors** published an independent Xbox Series compatibility layer that informed our work on shader translation and CPU/GPU memory synchronization. [XCL](https://github.com/xcl-dev/xcl)
+- **Marvisak and the VIctory contributors** created the original Windows compatibility runtime. [VIctory](https://github.com/Marvisak/VIctory)
+- **ZSlayerHQ and the victory-world contributors**, including **triippywhale** and **asdaasdsaddf**, supplied the Radeon rendering work used as the basis for this fork. [victory-world-runtime](https://github.com/ZSlayerHQ/victory-world-runtime)
+- **The XCL contributors** published an independent Xbox Series compatibility layer that informed shader translation and CPU/GPU memory synchronization. [XCL](https://github.com/xcl-dev/xcl)
 - **AMD** supplies the FSR 4.1.2 upscaler used by the Quality 4K profile. [AMD FSR SDK](https://gpuopen.com/amd-fsr-sdk/)
 
 The upstream README preserves the original credits and historical test results. [Upstream README](README.upstream.md)

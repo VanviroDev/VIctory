@@ -17,8 +17,10 @@ if not exist "%RUNTIME%victory-play.exe" (
 set "VICTORY_AMBIENT_FALLBACK=1"
 set "VICTORY_FSR_4K=0"
 set "VICTORY_LOG=warn"
-set "VICTORY_FILL_WORKERS=4"
+set "VICTORY_FILL_WORKERS=6"
+set "VICTORY_WIDE_WORKERS=6"
 set "VICTORY_PARALLEL_PRELUDES=1"
+set "VICTORY_DISPLAY_MODE=1920x1080"
 
 "%RUNTIME%victory-play.exe" --no-rt --console series-s --local-gpu-memory --sparse-textures --no-upload-ahead
 set "CODE=%ERRORLEVEL%"
