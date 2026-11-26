@@ -143,7 +143,13 @@ extern "system" fn adapter_description(_: This, out: *mut AdapterDescription) ->
     }
     // shortcut: memory sizes are the title's split (GPU-optimal, standard),
     // not measured; revisit once memory is emulated.
-    let (gpu_optimal, standard) = crate::console::current().title_memory();
+    // `VICTORY_GPU_MEMORY_MB` replaces the dedicated figure: the Series S
+    // split has none at all (the console's unified memory), which is the
+    // shape of an integrated card, and the title sizes its textures by it.
+    let (mut gpu_optimal, standard) = crate::console::current().title_memory();
+    if let Some(mb) = crate::host::gpu_memory_mb() {
+        gpu_optimal = mb << 20;
+    }
     let description = AdapterDescription {
         name,
         vendor: AMD,

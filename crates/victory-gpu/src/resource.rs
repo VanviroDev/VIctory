@@ -1449,6 +1449,12 @@ pub(crate) fn host_made<'a>(
 /// ([`room_percent`] says another share; `VICTORY_TEXTURE_BUDGET_MB` sets a
 /// limit on those copies' bytes instead). Past the budget the system moves
 /// the card's memory into the PC's, which ended runs 20 and 24.
+///
+/// The card's own figure is a gate even when a byte limit is set: the two
+/// measure different things (bytes of copies against the card's whole use,
+/// the title's own resources included), and a byte limit alone let the
+/// card reach 6,990 MB of 7,188 while the world loaded, after which the
+/// driver removed the device (run 16 of the GTA6 build, 26 November).
 #[cfg(windows)]
 pub(crate) fn room() -> bool {
     use std::sync::atomic::Ordering::Relaxed;
@@ -1460,15 +1466,17 @@ pub(crate) fn room() -> bool {
         mb.trim().parse::<u64>().ok().map(|mb| mb << 20)
     });
     let filled = KINDS[1].load(Relaxed);
-    if let Some(limit) = limit {
-        return filled < limit;
+    match limit {
+        Some(limit) if filled >= limit => return false,
+        None if filled >= WITHOUT_BUDGET => return false,
+        _ => {}
     }
     if filled < FLOOR {
         return true;
     }
     match crate::host::host().and_then(|h| h.video_memory()) {
         Some([budget, used, ..]) => used < budget / 100 * room_percent(),
-        None => filled < WITHOUT_BUDGET,
+        None => true,
     }
 }
 

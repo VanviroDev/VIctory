@@ -627,7 +627,11 @@ fn create() -> windows::core::Result<Host> {
             D3D12CreateDevice(&adapter, D3D_FEATURE_LEVEL_12_0, &mut device)?;
             tracing::info!("host device on the software adapter (WARP)");
         } else {
-            D3D12CreateDevice(None, D3D_FEATURE_LEVEL_12_0, &mut device)?;
+            let picked = pick_adapter();
+            let picked = picked
+                .as_ref()
+                .and_then(|a| a.cast::<windows::core::IUnknown>().ok());
+            D3D12CreateDevice(picked.as_ref(), D3D_FEATURE_LEVEL_12_0, &mut device)?;
         }
         let device = device.ok_or_else(windows::core::Error::empty)?;
         // `VICTORY_D3D12_BACKGROUND=0`: the runtime's background work (the
@@ -737,6 +741,22 @@ impl Host {
     }
 }
 
+/// `VICTORY_GPU_MEMORY_MB`: the dedicated video memory (MiB) the emulated
+/// adapter's description reports to the title, in place of the console's
+/// split. The Series S split has no dedicated memory at all — the console's
+/// unified memory — and the title sizes its textures by that figure.
+pub(crate) fn gpu_memory_mb() -> Option<usize> {
+    static MB: OnceLock<Option<usize>> = OnceLock::new();
+    *MB.get_or_init(|| {
+        std::env::var("VICTORY_GPU_MEMORY_MB")
+            .ok()?
+            .trim()
+            .parse::<usize>()
+            .ok()
+            .filter(|mb| *mb > 0)
+    })
+}
+
 /// Whether the host device is the software adapter (WARP): diagnostics
 /// builds with `VICTORY_D3D12_WARP`.
 pub(crate) fn on_warp() -> bool {
@@ -762,6 +782,63 @@ fn warp_adapter() -> windows::core::Result<IDXGIAdapter> {
             ));
         }
         Ok(adapter)
+    }
+}
+
+/// The adapter the host device is made on: the system's default, unless
+/// `VICTORY_ADAPTER` names another one (an index in DXGI's list, or part of
+/// its description, matched without case).
+///
+/// Every adapter is logged with its own memory either way: a machine with an
+/// integrated card beside a discrete one otherwise gives no sign of which of
+/// them the run used, and the default is whatever the system names, not the
+/// fastest.
+fn pick_adapter() -> Option<IDXGIAdapter> {
+    // SAFETY: plain DXGI enumeration and adapter queries.
+    unsafe {
+        let factory: IDXGIFactory4 = CreateDXGIFactory2(DXGI_CREATE_FACTORY_FLAGS(0)).ok()?;
+        let wanted = std::env::var("VICTORY_ADAPTER").ok();
+        let wanted = wanted.as_deref().map(str::trim).filter(|w| !w.is_empty());
+        let mut index = 0;
+        let mut chosen = None;
+        loop {
+            let Ok(adapter) = factory.EnumAdapters(index) else {
+                break;
+            };
+            let Ok(desc) = adapter.cast::<IDXGIAdapter1>().and_then(|a| a.GetDesc1()) else {
+                index += 1;
+                continue;
+            };
+            let name = String::from_utf16_lossy(&desc.Description)
+                .trim_end_matches('\0')
+                .to_owned();
+            let software = desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 != 0;
+            tracing::info!(
+                index,
+                name = %name,
+                vendor = format_args!("{:#x}", desc.VendorId),
+                device = format_args!("{:#x}", desc.DeviceId),
+                dedicated_mb = desc.DedicatedVideoMemory >> 20,
+                shared_mb = desc.SharedSystemMemory >> 20,
+                software,
+                "DXGI adapter"
+            );
+            if let Some(want) = wanted
+                && chosen.is_none()
+            {
+                let by_index = want.parse::<u32>().is_ok_and(|n| n == index);
+                let by_name = name.to_lowercase().contains(&want.to_lowercase());
+                if by_index || by_name {
+                    tracing::info!(index, name = %name, "host adapter chosen by VICTORY_ADAPTER");
+                    chosen = Some(adapter);
+                }
+            }
+            index += 1;
+        }
+        if wanted.is_some() && chosen.is_none() {
+            tracing::warn!("VICTORY_ADAPTER named no adapter; the system's default is used");
+        }
+        chosen
     }
 }
 
