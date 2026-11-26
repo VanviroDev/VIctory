@@ -762,6 +762,16 @@ fn take_last_target() -> This {
     LAST_TARGET.swap(0, Ordering::Relaxed) as This
 }
 
+/// The last draw target stands in for an empty present plane unless
+/// `VICTORY_PRESENT_LAST_TARGET=0` (diagnostics).
+#[cfg(feature = "diagnostics")]
+fn last_target_enabled() -> bool {
+    static ENABLED: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
+        !std::env::var("VICTORY_PRESENT_LAST_TARGET").is_ok_and(|v| v.trim() == "0")
+    });
+    *ENABLED
+}
+
 #[cfg(feature = "diagnostics")]
 pub(crate) fn presented() -> u64 {
     FRAMES.load(Ordering::Relaxed)
@@ -852,11 +862,10 @@ extern "system" fn present(
         && let Some(host) = crate::host::host()
     {
         // A presentation may stack more than one plane (the title's picture
-        // beside a video or system one). The plane with the most pixels is
-        // the picture: the others have been empty on every title seen so
-        // far, and showing the first one showed a black screen over a scene
-        // the card had drawn.
-        const PLANE_SIZE: usize = 64;
+        // beside a video or system one). The console's plane record is 0x48
+        // bytes: token, resource count, the resource list, and reserved
+        // words. The plane with the most pixels is the picture.
+        const PLANE_SIZE: usize = 0x48;
         let mut chosen: Option<(This, u64)> = None;
         for i in 0..(planes as usize).min(4) {
             // SAFETY: the title passes `planes` plane descriptions, each a
@@ -905,7 +914,7 @@ extern "system" fn present(
         #[cfg(feature = "diagnostics")]
         {
             let last = take_last_target();
-            if std::env::var_os("VICTORY_PRESENT_LAST_TARGET").is_some()
+            if last_target_enabled()
                 && !last.is_null()
                 && let Some(texture) = crate::resource::host_resource(last)
             {

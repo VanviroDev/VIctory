@@ -53,11 +53,19 @@ pub(crate) extern "system" fn set_interval(
     _period: u32,
     _flags: u32,
 ) -> HRESULT {
-    let interval = match length {
+    let asked = match length {
         0 => SIXTIETH,
         us => Duration::from_micros(u64::from(us)),
     };
-    tracing::info!(?interval, "frame interval");
+    // Machine profile: the title's own cap (30 Hz in the console quality
+    // mode) can be raised from the environment without touching the title.
+    // `VICTORY_FRAME_INTERVAL` is in microseconds; 16667 is 60 Hz.
+    let interval = std::env::var("VICTORY_FRAME_INTERVAL")
+        .ok()
+        .and_then(|value| value.trim().parse::<u32>().ok())
+        .filter(|micros| *micros > 0)
+        .map_or(asked, |micros| Duration::from_micros(u64::from(micros)));
+    tracing::info!(?asked, ?interval, "frame interval");
     // A new interval starts from now, after the last tick handed out.
     let first = LAST
         .iter()
